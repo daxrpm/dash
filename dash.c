@@ -1,64 +1,88 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
+#include <string.h>
 #include <sys/wait.h>
 
-#define MAX_LINE 1024
-#define MAX_ARGS 64
+#define BUFFER 1024
+#define ARGS_BUFFER 64
 
-void leer_comando(char *linea)
+void prompt_and_read(char *line);
+void parse_command(char *line, char **args);
+int execute_command(char **args);
+
+int main(int argc, char *argsv[])
 {
-    printf("dash> ");
+    char line[BUFFER];
+    char *args[ARGS_BUFFER];
+    int continue_prompt = 1;
+    while (continue_prompt)
+    {
+        prompt_and_read(line);
+        parse_command(line, args);
+        continue_prompt = execute_command(args);
+    }
+}
+
+void prompt_and_read(char *line)
+{
+    char cwd[BUFFER];
+    getcwd(cwd, sizeof(cwd));
+    printf("%s@%s> ", getenv("USER"), cwd);
     fflush(stdout);
-    if (fgets(linea, MAX_LINE, stdin) == NULL)
+    if (fgets(line, BUFFER, stdin) == NULL)
     {
         printf("\n");
         exit(0);
     }
 }
-
-void parsear_comando(char *linea, char **args)
+void parse_command(char *line, char **args)
 {
-    int i = 0;
-    char *token = strtok(linea, " \t\n");
-    while (token != NULL && i < MAX_ARGS - 1)
+    int count = 0;
+    char *token = strtok(line, " \t\n");
+    while (token != NULL && count < ARGS_BUFFER - 1)
     {
-        args[i++] = token;
+        args[count++] = token;
         token = strtok(NULL, " \t\n");
     }
-    args[i] = NULL;
+    args[count] = NULL; // for the execvp command
 }
 
-int ejecutar_comando(char **args)
+int execute_command(char **args)
 {
+    // Empty prompt
     if (args[0] == NULL)
+    {
         return 1;
-
+    }
+    // CD prompt managed by syscall to change the CWD built in command
     if (strcmp(args[0], "cd") == 0)
     {
         if (args[1] == NULL)
         {
-            fprintf(stderr, "dash: falta argumento para cd\n");
+            chdir(getenv("HOME"));
         }
         else if (chdir(args[1]) != 0)
         {
-            perror("dash");
+            perror("Error al cambiar de directorio ");
         }
         return 1;
     }
 
+    // exit case
     if (strcmp(args[0], "exit") == 0)
     {
         return 0;
     }
-
     pid_t pid = fork();
+
     if (pid == 0)
     {
+        // son case
+
         execvp(args[0], args);
-        perror("dash");
-        exit(EXIT_FAILURE);
+        perror("error in bash");
+        exit(1);
     }
     else if (pid > 0)
     {
@@ -66,22 +90,7 @@ int ejecutar_comando(char **args)
     }
     else
     {
-        perror("fork");
+        perror("Error at creating fork process");
     }
     return 1;
-}
-
-int main()
-{
-    char linea[MAX_LINE];
-    char *args[MAX_ARGS];
-    int continuar = 1;
-
-    while (continuar)
-    {
-        leer_comando(linea);
-        parsear_comando(linea, args);
-        continuar = ejecutar_comando(args);
-    }
-    return 0;
 }
